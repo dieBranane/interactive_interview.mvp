@@ -8,6 +8,14 @@ from pathlib import Path
 from utils import ensure_dirs, build_index_from_snippets, query_index, load_index_metadata
 from ingest import process_upload_video
 
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"message": "Willkommen zur Interview-App"}
+
 MEDIA_DIR = Path('media')
 SNIPPETS_DIR = MEDIA_DIR / 'snippets'
 VIDEOS_DIR = MEDIA_DIR / 'videos'
