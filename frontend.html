@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Interactive Interview - Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #player { margin-top: 20px; }
+    input, button { font-size: 16px; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Interactive Interview — Demo</h2>
+  <p>Frage eingeben (Deutsch/Englisch) und das beste Snippet wird abgespielt.</p>
+  <input id="q" type="text" size="60" placeholder="z.B. Wie war es nach dem Krieg nach Deutschland zurückzukehren?" />
+  <button onclick="ask()">Frage stellen</button>
+  <div id="result"></div>
+  <div id="player"></div>
+
+<script>
+async function ask(){
+  const q = document.getElementById('q').value;
+  if(!q) return alert('Bitte eine Frage eingeben.');
+  document.getElementById('result').innerText = 'Suche...';
+  const resp = await fetch('/ask', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({query:q})});
+  const j = await resp.json();
+  if(j.status !== 'ok'){ document.getElementById('result').innerText = 'Kein Treffer.'; return; }
+  const best = j.best;
+  document.getElementById('result').innerText = 'Treffer (score='+best.score.toFixed(3)+'): ' + best.transcript;
+  const player = document.getElementById('player');
+  player.innerHTML = '';
+  const video = document.createElement('video');
+  video.controls = true;
+  video.src = '/snippet/' + best.snippet_file;
+  video.style.maxWidth = '100%';
+  player.appendChild(video);
+  video.play();
+}
+</script>
+</body>
+</html>
