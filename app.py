@@ -1,74 +1,41 @@
+from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 import os
-from fastapi import FastAPI, UploadFile, File, Form, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
-from pydantic import BaseModel
 import shutil
-import uuid
-from pathlib import Path
-from utils import ensure_dirs, build_index_from_snippets, query_index, load_index_metadata
-from ingest import process_upload_video
-
-from fastapi import FastAPI
 
 app = FastAPI()
 
-@app.get("/")
-def root():
-    return {"message": "Willkommen zur Interview-App"}
+# Ordner für statische Dateien
+if not os.path.exists("static"):
+    os.makedirs("static")
 
-MEDIA_DIR = Path('media')
-SNIPPETS_DIR = MEDIA_DIR / 'snippets'
-VIDEOS_DIR = MEDIA_DIR / 'videos'
-INDEX_DIR = Path('index_data')
+# Ordner für hochgeladene Videos
+VIDEO_DIR = "static/videos"
+if not os.path.exists(VIDEO_DIR):
+    os.makedirs(VIDEO_DIR)
 
-ensure_dirs([MEDIA_DIR, SNIPPETS_DIR, VIDEOS_DIR, INDEX_DIR])
+# Templates Ordner
+if not os.path.exists("templates"):
+    os.makedirs("templates")
 
-app = FastAPI(title='Interactive Interview MVP')
+templates = Jinja2Templates(directory="templates")
 
-@app.post('/ingest')
-async def ingest(video: UploadFile = File(...), persona: str = Form('persona_1')):
-    # save uploaded video
-    vid_id = str(uuid.uuid4())[:8]
-    out_path = VIDEOS_DIR / f"{vid_id}.mp4"
-    with open(out_path, 'wb') as f:
-        shutil.copyfileobj(video.file, f)
-    # process (transcribe, segment, embed, create snippets)
-    snippets_meta = process_upload_video(str(out_path), persona, snippets_out_dir=str(SNIPPETS_DIR))
-    # build index
-    build_index_from_snippets(snippets_meta, index_dir=str(INDEX_DIR))
-    return JSONResponse({'status':'ok', 'video_id': vid_id, 'num_snippets': len(snippets_meta), 'snippets_preview': snippets_meta[:5]})
+# Mount static folder
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-class AskRequest(BaseModel):
-    query: str
-    k: int = 10
+@app.get("/", response_class=HTMLResponse)
+def read_root(request: Request):
+    videos = os.listdir(VIDEO_DIR)
+    videos = [f"/static/videos/{v}" for v in videos]
+    return templates.TemplateResponse("index.html", {"request": request, "videos": videos})
 
-@app.post('/ask')
-async def ask(req: AskRequest):
-    results = query_index(req.query, top_k=req.k, index_dir=str(INDEX_DIR))
-    # return best hit + snippet file path (relative)
-    if len(results)==0:
-        return JSONResponse({'status': 'no_match'})
-    best = results[0]
-    # path to snippet mp4
-    snippet_file = best.get('snippet_file')
-    return JSONResponse({'status':'ok', 'best': best})
-
-@app.get('/snippet/{filename}')
-async def get_snippet(filename: str):
-    path = SNIPPETS_DIR / filename
-    if not path.exists():
-        return JSONResponse({'error': 'not found'}, status_code=404)
-    return FileResponse(path)
-
-@app.get('/frontend')
-async def frontend():
-    return HTMLResponse(open('frontend.html','r', encoding='utf-8').read())
-
-@app.get('/health')
-async def health():
-    return JSONResponse({'status':'ok'})
-
-
-if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run('app:app', host='0.0.0.0', port=8000, reload=True)
+@app.post("/upload", response_class=HTMLResponse)
+async def upload_video(request: Request, file: UploadFile = File(...)):
+    video_path = os.path.join(VIDEO_DIR, file.filename)
+    with open(video_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    videos = os.listdir(VIDEO_DIR)
+    videos = [f"/static/videos/{v}" for v in videos]
+    return templates.TemplateResponse("index.html", {"request": request, "videos": videos, "message": f"{file.filename} hochgeladen!"})
